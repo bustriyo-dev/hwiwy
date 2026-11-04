@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spacehub - Bandar Host</title>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+    <style>
+        :root {
+            --bg-dark: #090614; --panel-bg: #120c24; --card-bg: #1c1338;
+            --space-purple: #7b2cbf; --space-cyan: #00f5ff; --space-yellow: #ffdf00;
+            --neon-red: #ff0055; --neon-green: #00ff66; --text-main: #f1f0ff; --text-sub: #9a8cbf; --border-color: #2e1f54;
+            --glow-cyan: rgba(0, 245, 255, 0.4);
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, sans-serif; }
+        body { background: var(--bg-dark); color: var(--text-main); width: 100vw; height: 100vh; display: flex; justify-content: center; align-items: center; overflow: hidden; }
+
+        .viewport-9-16 {
+            width: 100vw; height: 177.78vw; max-height: 100vh; max-width: 56.25vh;
+            display: flex; flex-direction: column; padding: 10px; gap: 8px;
+            background: radial-gradient(circle at 50% 20%, #1a0b36 0%, #080410 100%);
+            border: 1px solid var(--border-color); box-shadow: 0 0 50px rgba(0,0,0,0.95); overflow-y: auto;
+        }
+
+        .header { display: flex; justify-content: space-between; align-items: center; background: rgba(18, 12, 36, 0.85); border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 8px; }
+        .logo-title { font-size: 14px; font-weight: 900; color: var(--space-cyan); letter-spacing: 1px; }
+        .status-badge { padding: 3px 8px; border-radius: 12px; font-size: 10px; font-weight: 800; background: #ffdf00; color: #000; text-transform: uppercase; }
+
+        .canvas-container {
+            background: radial-gradient(circle at center, #1f1140 0%, #0b0518 100%);
+            border: 1px solid var(--space-purple); border-radius: 8px; height: 180px; position: relative; overflow: hidden; display: flex; justify-content: center; align-items: center;
+        }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        .live-overlay { position: relative; z-index: 2; text-align: center; pointer-events: none; }
+        .live-mult { font-size: 46px; font-weight: 900; color: var(--space-cyan); text-shadow: 0 0 20px var(--glow-cyan); }
+        .live-status { font-size: 11px; color: var(--text-sub); font-weight: 700; text-transform: uppercase; }
+
+        .panel-card { background: rgba(28, 19, 56, 0.7); border: 1px solid var(--border-color); border-radius: 8px; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+        .panel-title { font-size: 10px; font-weight: 800; color: var(--space-yellow); text-transform: uppercase; border-bottom: 1px solid var(--border-color); padding-bottom: 3px; display: flex; justify-content: space-between; }
+
+        .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+        .input-group { display: flex; flex-direction: column; gap: 2px; }
+        .input-group label { font-size: 8px; color: var(--text-sub); font-weight: bold; text-transform: uppercase; }
+        .input-group input { background: #0d071b; border: 1px solid var(--border-color); color: #fff; padding: 6px; border-radius: 4px; font-size: 11px; outline: none; }
+
+        .btn { padding: 10px; border: none; border-radius: 6px; font-weight: 900; font-size: 12px; cursor: pointer; text-transform: uppercase; width: 100%; }
+        .btn-crash { background: var(--neon-red); color: #fff; }
+
+        .table-container { height: 110px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; background: #0c0618; }
+        table { width: 100%; border-collapse: collapse; font-size: 9px; }
+        th { background: rgba(30, 19, 60, 0.9); color: var(--text-sub); padding: 4px; text-align: left; position: sticky; top: 0; }
+        td { padding: 3px 4px; border-bottom: 1px solid rgba(255,255,255,0.03); }
+        ::-webkit-scrollbar { width: 3px; } ::-webkit-scrollbar-thumb { background: var(--space-purple); }
+    </style>
+</head>
+<body>
+    <div class="viewport-9-16">
+        <div class="header">
+            <div class="logo-title">⚙️ SPACEHUB HOST</div>
+            <div class="status-badge" id="hostStateBadge">COUNTDOWN</div>
+        </div>
+
+        <div class="canvas-container">
+            <canvas id="spaceCanvas"></canvas>
+            <div class="live-overlay">
+                <div class="live-mult" id="multDisplay">1.00x</div>
+                <div class="live-status" id="statusDisplay">SIAP: 5s</div>
+            </div>
+        </div>
+
+        <div class="panel-card">
+            <div class="panel-title"><span>Pengaturan Bandar</span></div>
+            <div class="controls-grid">
+                <div class="input-group">
+                    <label>Setting RTP (%)</label>
+                    <input type="number" id="rtpInput" value="95" min="10" max="120">
+                </div>
+                <div class="input-group">
+                    <label>Paksa Crash (0=Auto)</label>
+                    <input type="number" id="forceCrashInput" value="0" step="0.1">
+                </div>
+            </div>
+            <button id="instantCrashBtn" class="btn btn-crash" style="display:none; margin-top:4px;">CRASH SEKARANG!</button>
+        </div>
+
+        <div class="panel-card" style="flex:1; min-height:0;">
+            <div class="panel-title">
+                <span>Daftar Taruhan Pemain</span>
+                <span id="playerCountBadge" style="color:var(--space-cyan);">0 Pemain</span>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead><tr><th>Pemain</th><th>Taruhan</th><th>Status</th></tr></thead>
+                    <tbody id="playerTableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Konfigurasi Firebase Anda
+        const firebaseConfig = {
+          apiKey: "AIzaSyB8eZw_cJrl8A-ThVt5jt6F3Cn4dSrFV5I",
+          authDomain: "spacexhub-bca48.firebaseapp.com",
+          projectId: "spacexhub-bca48",
+          storageBucket: "spacexhub-bca48.firebasestorage.app",
+          messagingSenderId: "326728042749",
+          appId: "1:326728042749:web:6a12e7250dcdf5176a1694",
+          measurementId: "G-X5KVJSH0P6"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let gameState = 'COUNTDOWN', currentMultiplier = 1.00, targetCrashPoint = 2.00, countdown = 5;
+
+        const multDisplay = document.getElementById('multDisplay');
+        const statusDisplay = document.getElementById('statusDisplay');
+        const instantCrashBtn = document.getElementById('instantCrashBtn');
+        const hostStateBadge = document.getElementById('hostStateBadge');
+        const playerTableBody = document.getElementById('playerTableBody');
+        const playerCountBadge = document.getElementById('playerCountBadge');
+
+        const canvas = document.getElementById('spaceCanvas');
+        const ctx = canvas.getContext('2d');
+        function resizeCanvas() { canvas.width = canvas.parentElement.clientWidth; canvas.height = canvas.parentElement.clientHeight; }
+        window.addEventListener('resize', resizeCanvas); resizeCanvas();
+
+        const stars = Array.from({ length: 20 }, () => ({ x: Math.random() * 200, y: Math.random() * 150, r: Math.random() * 1.5 + 0.5, alpha: Math.random() }));
+        function drawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            stars.forEach(s => {
+                s.y += 0.4; if (s.y > canvas.height) s.y = 0;
+                ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(255,255,255,${s.alpha})`; ctx.fill();
+            });
+            if (gameState === 'RUNNING' || gameState === 'CRASHED') {
+                const progress = Math.min((currentMultiplier - 1) / 4, 1);
+                const startX = 20, startY = canvas.height - 15;
+                const endX = canvas.width * 0.75 * progress + 20;
+                const endY = canvas.height - (canvas.height * 0.65 * progress) - 15;
+                ctx.beginPath(); ctx.moveTo(startX, startY); ctx.quadraticCurveTo(endX / 2, canvas.height - 10, endX, endY);
+                ctx.strokeStyle = gameState === 'CRASHED' ? '#ff0055' : '#00f5ff'; ctx.lineWidth = 3; ctx.stroke();
+                ctx.beginPath(); ctx.arc(endX, endY, 6, 0, Math.PI * 2);
+                ctx.fillStyle = gameState === 'CRASHED' ? '#ff0055' : '#ffdf00'; ctx.fill();
+            }
+            requestAnimationFrame(drawCanvas);
+        }
+        drawCanvas();
+
+        db.ref('game/bets').on('value', (snapshot) => {
+            const allBets = snapshot.val() || {};
+            playerTableBody.innerHTML = '';
+            let count = 0;
+            for (let id in allBets) {
+                let p = allBets[id];
+                count++;
+                let color = '#9a8cbf';
+                if (p.cashedOut) color = '#00ff66';
+                else if (gameState === 'CRASHED') color = '#ff0055';
+
+                playerTableBody.innerHTML += `<tr><td><strong>${p.name}</strong></td><td>Rp ${(p.bet||0).toLocaleString('id-ID')}</td><td style="color:${color}; font-weight:bold;">${p.status}</td></tr>`;
+            }
+            playerCountBadge.textContent = `${count} Pemain`;
+        });
+
+        function startRoundCountdown() {
+            gameState = 'COUNTDOWN'; countdown = 5;
+            hostStateBadge.textContent = 'COUNTDOWN';
+            hostStateBadge.style.background = '#ffdf00'; hostStateBadge.style.color = '#000';
+            instantCrashBtn.style.display = 'none';
+
+            db.ref('game/bets').remove();
+            db.ref('game/status').set({ state: 'COUNTDOWN', multiplier: 1.00, timer: countdown });
+
+            const forced = parseFloat(document.getElementById('forceCrashInput').value);
+            if (forced > 1.0) targetCrashPoint = forced;
+            else {
+                const rtp = parseFloat(document.getElementById('rtpInput').value) / 100;
+                targetCrashPoint = Math.max(1.01, parseFloat(((1 / (1 - Math.random() * 0.95)) * rtp).toFixed(2)));
+            }
+
+            const timer = setInterval(() => {
+                countdown--;
+                statusDisplay.textContent = `SIAP: ${countdown}s`;
+                multDisplay.textContent = '1.00x'; multDisplay.style.color = 'var(--space-cyan)';
+                db.ref('game/status').update({ timer: countdown });
+
+                if (countdown <= 0) {
+                    clearInterval(timer);
+                    runFlight();
+                }
+            }, 1000);
+            statusDisplay.textContent = `SIAP: 5s`;
+        }
+
+        function runFlight() {
+            gameState = 'RUNNING';
+            hostStateBadge.textContent = 'RUNNING';
+            hostStateBadge.style.background = '#00ff66'; hostStateBadge.style.color = '#000';
+            instantCrashBtn.style.display = 'block';
+            statusDisplay.textContent = 'TERBANG...';
+
+            currentMultiplier = 1.00;
+            const startTime = Date.now();
+
+            const flightInterval = setInterval(() => {
+                const elapsed = (Date.now() - startTime) / 1000;
+                currentMultiplier = parseFloat(Math.pow(Math.E, 0.07 * elapsed).toFixed(2));
+                multDisplay.textContent = currentMultiplier.toFixed(2) + 'x';
+                db.ref('game/status').update({ state: 'RUNNING', multiplier: currentMultiplier });
+
+                if (currentMultiplier >= targetCrashPoint) {
+                    clearInterval(flightInterval);
+                    triggerCrash();
+                }
+            }, 80);
+        }
+
+        function triggerCrash() {
+            gameState = 'CRASHED';
+            hostStateBadge.textContent = 'CRASHED';
+            hostStateBadge.style.background = '#ff0055'; hostStateBadge.style.color = '#fff';
+            statusDisplay.textContent = 'TABRAKAN!';
+            multDisplay.textContent = targetCrashPoint.toFixed(2) + 'x';
+            multDisplay.style.color = 'var(--neon-red)';
+            instantCrashBtn.style.display = 'none';
+
+            db.ref('game/status').update({ state: 'CRASHED', multiplier: currentMultiplier, crashPoint: targetCrashPoint });
+
+            setTimeout(() => { startRoundCountdown(); }, 3000);
+        }
+
+        instantCrashBtn.addEventListener('click', () => {
+            if (gameState === 'RUNNING') targetCrashPoint = currentMultiplier;
+        });
+
+        startRoundCountdown();
+    </script>
+</body>
+</html>
